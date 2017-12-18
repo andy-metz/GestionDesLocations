@@ -1,0 +1,186 @@
+-- Création de la procédure LouerVehicule
+CREATE OR REPLACE PROCEDURE LouerVehicule (NoVeh in number, Form in varchar2, Depart in date, Retour in date)
+IS
+	v_Situation VEHICULE.SITUATION%TYPE;
+BEGIN
+IF  Retour <  Depart THEN
+	RAISE_APPLICATION_ERROR(-20001,'La date retour doit être supérieure à la date de départ');
+ELSE
+	SELECT SITUATION INTO v_Situation FROM VEHICULE WHERE NOVEHICULE=NoVeh;
+	IF (v_Situation <>  'disponible') THEN
+		RAISE_APPLICATION_ERROR(-20002,'le véhicule n''est pas disponible');
+	ELSE
+		INSERT INTO Location (NOLOCATION, NOVEHICULE, FORMULE, DATEDEPART, DATERETOUR)
+		VALUES (SeqLoc.NEXTVAL, NoVeh,  Form, Depart, Retour);	
+	END IF;
+END IF;
+EXCEPTION
+	WHEN NO_DATA_FOUND THEN
+DBMS_OUTPUT.PUT_LINE('Pas de véhicule correspondant au code : '||TO_CHAR(NoVeh));
+	WHEN DUP_VAL_ON_INDEX THEN
+DBMS_OUTPUT.PUT_LINE('service en double correspondant à l''UE');
+	WHEN OTHERS THEN
+-- par exemple des heures négatives
+DBMS_OUTPUT.PUT_LINE('Erreur Oracle : '||sqlcode||' ; Message Oracle : '||sqlerrm);
+END;
+
+
+
+-- Création de la procédure RetournerVehicule
+CREATE OR REPLACE PROCEDURE RetournerVehicule (NoVeh in number, Retour in date, Km in number)
+IS
+	v_Situation VEHICULE.SITUATION%TYPE;
+	v_datedepart LOCATION.DATEDEPART%TYPE;
+	v_nolocation LOCATION.NOLOCATION%TYPE;
+	v_dateretour LOCATION.DATERETOUR%TYPE;
+BEGIN
+	SELECT SITUATION INTO v_Situation FROM VEHICULE WHERE NOVEHICULE=NoVeh;
+	IF (v_Situation <>  'loué') THEN
+		RAISE_APPLICATION_ERROR(-20002,'le véhicule n''est pas en location');	
+	ELSE		
+		SELECT NOLOCATION, DATEDEPART INTO v_nolocation, v_datedepart FROM LOCATION WHERE DATEDEPART = (select max(DATEDEPART) from LOCATION where NOVEHICULE = NoVeh) and NOVEHICULE = NoVeh;
+		IF  Retour <  v_datedepart THEN
+			RAISE_APPLICATION_ERROR(-20001,'La date retour doit être supérieure à la date de départ');
+
+		ELSE
+			UPDATE Location 
+			SET NBKM = Km, DATERETOUR=Retour 
+			WHERE NOLOCATION = v_nolocation ;	
+		END IF;
+	END IF;
+EXCEPTION
+	WHEN NO_DATA_FOUND THEN
+DBMS_OUTPUT.PUT_LINE('Pas de véhicule correspondant au code : '||TO_CHAR(NoVeh));
+	WHEN DUP_VAL_ON_INDEX THEN
+DBMS_OUTPUT.PUT_LINE('service en double correspondant à l''UE');
+	WHEN OTHERS THEN
+-- par exemple des heures négatives
+DBMS_OUTPUT.PUT_LINE('Erreur Oracle : '||sqlcode||' ; Message Oracle : '||sqlerrm);
+END;
+
+
+
+
+-- Création de la procédure ConsulterLocation
+CREATE OR REPLACE PROCEDURE ConsulterLocation (NoLoc in number)
+IS
+	v_nolocation LOCATION.NOLOCATION%TYPE;
+	v_novehicule LOCATION.NOVEHICULE%TYPE;
+	v_formule	 LOCATION.FORMULE%TYPE;
+	v_datedepart LOCATION.DATEDEPART%TYPE;
+	v_dateretour LOCATION.DATERETOUR%TYPE;
+	v_nbkm		 LOCATION.NBKM%TYPE;
+	v_montant LOCATION.MONTANT%TYPE;
+	
+BEGIN
+	SELECT NOLOCATION, NOVEHICULE, FORMULE, DATEDEPART, DATERETOUR, NBKM, MONTANT  INTO v_nolocation, v_novehicule, v_formule, v_datedepart, v_dateretour, v_nbkm, v_montant FROM LOCATION WHERE NOLOCATION = NoLoc;
+	DBMS_OUTPUT.PUT_LINE('No Location: '||TO_CHAR(v_nolocation)||'; No véhicule: '||TO_CHAR(v_novehicule)||'; Formule : '||v_formule||'; Date départ: '||v_datedepart||'; Date retour: '||v_dateretour||'; Nb km: '||TO_CHAR(v_nbkm)||'; Montant: '||TO_CHAR(v_montant));
+EXCEPTION
+	WHEN NO_DATA_FOUND THEN
+DBMS_OUTPUT.PUT_LINE('Pas de location correspondant à Nolocation : '||TO_CHAR(NoLoc));
+END;
+
+
+
+
+-- Création du Trigger de mise à jour de la table vehicule
+CREATE OR REPLACE TRIGGER MajLocation
+AFTER INSERT OR UPDATE OR DELETE ON Location FOR EACH ROW
+DECLARE
+  serv_egal_td NUMBER(7,2);
+BEGIN
+	IF INSERTING THEN
+		UPDATE Vehicule
+		SET Situation = 'loué'
+		WHERE NoVehicule = :NEW.NOVEHICULE;
+	END IF ;
+	IF UPDATING THEN
+		UPDATE Vehicule
+		SET Situation = 'disponible'
+		WHERE NoVehicule = :NEW.NOVEHICULE;
+	END IF;
+END ;
+
+
+
+
+
+
+
+----------------------------------------------------
+
+
+DROP SEQUENCE seqLoc;
+CREATE SEQUENCE seqLoc START WITH 101 INCREMENT BY 1;
+
+SET SERVEROUTPUT ON
+DECLARE
+ca NUMBER;
+fa VARCHAR2(150);
+
+
+BEGIN
+DBMS_OUTPUT.PUT_LINE('Début du test IMPAIR');
+
+
+
+-- Suppression des données
+DELETE FROM Location;
+DELETE FROM VehiculeVendu;
+DELETE FROM Vehicule;
+
+-- Saisie des véhicules
+--------------------------
+  INSERT INTO Vehicule VALUES(1,1,'RENAULT','CLIO4','EA001EA','01/01/2017',14000,'disponible');
+  INSERT INTO Vehicule VALUES(2,1,'PEUGEOT','208','EA002EA','01/02/2017',15000,'disponible');
+  INSERT INTO Vehicule VALUES(3,1,'CITROEN','C3','EB003EB','01/03/2017',10000,'disponible');
+  INSERT INTO Vehicule VALUES(4,2,'AUDI','A4','EB004EB','01/04/2017',15000,'disponible');
+  INSERT INTO Vehicule VALUES(5,2,'VOLKSWAGEN','PASSAT','EC005EC','01/05/2017',12000,'disponible');
+  INSERT INTO Vehicule VALUES(6,2,'PEUGEOT','508','EC006EC','01/06/2017',9000,'disponible');
+  INSERT INTO Vehicule VALUES(7,3,'CITROEN','PICASSO','EF007EF','01/07/2017',3000,'disponible');
+  INSERT INTO Vehicule VALUES(8,3,'RENAULT','SCENIC','EF008EF','01/07/2017',4000,'disponible');
+  INSERT INTO Vehicule VALUES(9,3,'PEUGEOT','5008','EG009EG','01/09/2017',1000,'disponible');
+  INSERT INTO Vehicule VALUES(10,4,'RENAULT','KANGOO','DA010DA','01/09/2016',20000,'disponible');
+  INSERT INTO Vehicule VALUES(11,5,'FORD','TRANSIT','DA011DA','01/10/2016',25000,'disponible');
+  INSERT INTO Vehicule VALUES(12,6,'FIAT','DUCATO','DB012DB','01/11/2016',15000,'disponible');
+  COMMIT;
+  
+  
+-- procedure : LouerVehicule
+-----------------------------------
+  LouerVehicule(1,'jour',SYSDATE,SYSDATE+1);
+  LouerVehicule(2,'mois',SYSDATE,SYSDATE+30);
+  LouerVehicule(4,'jour',SYSDATE,SYSDATE+1);
+  LouerVehicule(7,'semaine',SYSDATE,SYSDATE+7);
+  LouerVehicule(10,'fin-semaine',TO_DATE('3/11/2017 18:00','DD/MM/YYYY HH24:MI'),TO_DATE('6/11/2017 8:00','DD/MM/YYYY HH24:MI'));
+  LouerVehicule(11,'semaine',SYSDATE,SYSDATE+7);
+-- Pour faire une deuxième location sur le même véhicule
+  RetournerVehicule(1,SYSDATE+1,110);
+  LouerVehicule(1,'jour',SYSDATE+2,SYSDATE+3);
+--Erreur : DateRetour < DateDepart
+  LouerVehicule(8,'jour',SYSDATE,SYSDATE-1);
+--Erreur : Véhicule en location dans la période
+  LouerVehicule(2,'semaine',SYSDATE+1,SYSDATE+8);
+  
+  
+-- procedure : ConsulterLocation
+----------------------------------------
+  ConsulterLocation(106);
+-- Location inexistante
+  ConsulterLocation(0); 
+
+  -- procedure : RetournerVehicule
+----------------------------------------
+  RetournerVehicule(1,SYSDATE+3,120);
+  RetournerVehicule(4,SYSDATE+1,100);
+  RetournerVehicule(7,SYSDATE+7,900);
+--Erreur: Pas de location en cours pour ce véhicule
+  RetournerVehicule(4,SYSDATE+1,100);
+--Erreur: Pas de véhicule
+  RetournerVehicule(0,SYSDATE+1,110);
+--
+-- Vérifier le cacul du Montant de la location
+  ConsulterLocation(101);
+  ConsulterLocation(107);
+  
+END;

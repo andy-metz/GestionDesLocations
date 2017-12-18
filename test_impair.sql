@@ -12,6 +12,10 @@ DBMS_OUTPUT.PUT_LINE('Début du test IMPAIR');
 -- Il faut supprimer et recréer la séquence pour la numérotation automatique des locations
 -- La séquence doit débuter à 101.
 --
+DROP SEQUENCE seqLoc;
+CREATE SEQUENCE seqLoc START WITH 101 INCREMENT BY 1;
+
+
 -- Suppression des données
 DELETE FROM Location;
 DELETE FROM VehiculeVendu;
